@@ -234,7 +234,131 @@ const gitContext = {
   pathspec,
 };
 
-function runReport(label, cmd) {
+let pkgJsonCache;
+function readRepoPkg() {
+  if (pkgJsonCache !== undefined) return pkgJsonCache;
+  const p = join(repoRoot, "package.json");
+  if (!existsSync(p)) return (pkgJsonCache = null);
+  try {
+    pkgJsonCache = JSON.parse(readFileSync(p, "utf8"));
+  } catch {
+    pkgJsonCache = null;
+  }
+  return pkgJsonCache;
+}
+
+function hasPackageDep(name) {
+  const pkg = readRepoPkg();
+  if (!pkg) return false;
+  return Boolean(
+    (pkg.dependencies && pkg.dependencies[name]) ||
+      (pkg.devDependencies && pkg.devDependencies[name]) ||
+      (pkg.peerDependencies && pkg.peerDependencies[name]) ||
+      (pkg.optionalDependencies && pkg.optionalDependencies[name])
+  );
+}
+
+// Catches transitive deps (e.g. `babel-plugin-react-compiler` shipped via
+// `expo` SDK rather than declared at the top level).
+function hasNodeModule(name) {
+  return existsSync(join(repoRoot, "node_modules", name, "package.json"));
+}
+
+// `path` is repo-relative, `pattern` is a JS regex source string. Used for
+// build-flag style detection where a feature is opt-in via config rather
+// than a top-level dep — e.g. Expo `experiments.reactCompiler: true`,
+// Next.js `experimental.reactCompiler`, babel.config referencing a plugin.
+function fileMatches(path, pattern) {
+  const abs = join(repoRoot, path);
+  if (!existsSync(abs)) return false;
+  let txt;
+  try {
+    txt = readFileSync(abs, "utf8");
+  } catch {
+    return false;
+  }
+  let re;
+  try {
+    re = new RegExp(pattern);
+  } catch {
+    return false;
+  }
+  return re.test(txt);
+}
+
+// Evaluate a `when` clause. All top-level keys AND together. `anyOf` is
+// itself an array of nested clauses, OR-ed. Supported keys:
+//   packageDep / packageDeps  — declared in package.json
+//   nodeModulesDep / nodeModulesDeps — present under node_modules/ (transitive ok)
+//   fileExists / filesExist   — repo-relative paths must exist
+//   fileContains              — { path, pattern } regex match against file contents
+//   filesContain              — array of the above (all must match)
+//   anyOf                     — [whenClause, ...]; passes if ANY nested passes
+function evalWhen(when) {
+  if (!when || typeof when !== "object") return { ok: true };
+  const deps = []
+    .concat(typeof when.packageDep === "string" ? [when.packageDep] : [])
+    .concat(Array.isArray(when.packageDeps) ? when.packageDeps : []);
+  for (const d of deps) {
+    if (!hasPackageDep(d)) {
+      return { ok: false, reason: `missing package dep '${d}'` };
+    }
+  }
+  const nmDeps = []
+    .concat(
+      typeof when.nodeModulesDep === "string" ? [when.nodeModulesDep] : []
+    )
+    .concat(Array.isArray(when.nodeModulesDeps) ? when.nodeModulesDeps : []);
+  for (const d of nmDeps) {
+    if (!hasNodeModule(d)) {
+      return { ok: false, reason: `missing node_modules/${d}` };
+    }
+  }
+  const files = []
+    .concat(typeof when.fileExists === "string" ? [when.fileExists] : [])
+    .concat(Array.isArray(when.filesExist) ? when.filesExist : []);
+  for (const f of files) {
+    if (!existsSync(join(repoRoot, f))) {
+      return { ok: false, reason: `missing file '${f}'` };
+    }
+  }
+  const contains = []
+    .concat(when.fileContains ? [when.fileContains] : [])
+    .concat(Array.isArray(when.filesContain) ? when.filesContain : []);
+  for (const c of contains) {
+    if (!c || typeof c.path !== "string" || typeof c.pattern !== "string") {
+      return { ok: false, reason: `bad fileContains clause` };
+    }
+    if (!fileMatches(c.path, c.pattern)) {
+      return {
+        ok: false,
+        reason: `file '${c.path}' does not match /${c.pattern}/`,
+      };
+    }
+  }
+  if (Array.isArray(when.anyOf) && when.anyOf.length > 0) {
+    const reasons = [];
+    let matched = false;
+    for (const sub of when.anyOf) {
+      const r = evalWhen(sub);
+      if (r.ok) {
+        matched = true;
+        break;
+      }
+      reasons.push(r.reason);
+    }
+    if (!matched) {
+      return { ok: false, reason: `none of anyOf matched (${reasons.join("; ")})` };
+    }
+  }
+  return { ok: true };
+}
+
+function runReport(label, cmd, when) {
+  const w = evalWhen(when);
+  if (!w.ok) {
+    return { label, output: `(skipped: ${w.reason})`, status: -1 };
+  }
   if (!Array.isArray(cmd) || cmd.length === 0) {
     return { label, output: "(skipped: empty cmd)", status: -1 };
   }
@@ -271,7 +395,11 @@ function runReport(label, cmd) {
 }
 
 const reports = reportsCfg.map((r) =>
-  runReport(typeof r?.label === "string" ? r.label : "report", r?.cmd)
+  runReport(
+    typeof r?.label === "string" ? r.label : "report",
+    r?.cmd,
+    r?.when
+  )
 );
 
 // Surface known findings to Claude so it can dedup at write time. "open" =

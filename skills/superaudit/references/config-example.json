@@ -5,12 +5,51 @@
   "reports": [
     { "label": "Lint", "cmd": ["bun", "run", "lint"] },
     {
-      "label": "React Compiler Healthcheck",
-      "cmd": ["npx", "-y", "react-compiler-healthcheck@latest"]
+      "label": "React Compiler Marker",
+      "cmd": ["npx", "-y", "react-compiler-marker@latest", "--format", "json", "."],
+      "when": {
+        "anyOf": [
+          { "packageDep": "babel-plugin-react-compiler" },
+          { "nodeModulesDep": "babel-plugin-react-compiler" },
+          { "fileContains": { "path": "app.json", "pattern": "\"reactCompiler\"\\s*:\\s*true" } },
+          { "fileContains": { "path": "app.config.js", "pattern": "reactCompiler\\s*:\\s*true" } },
+          { "fileContains": { "path": "app.config.ts", "pattern": "reactCompiler\\s*:\\s*true" } },
+          { "fileContains": { "path": "next.config.js", "pattern": "reactCompiler" } },
+          { "fileContains": { "path": "next.config.mjs", "pattern": "reactCompiler" } },
+          { "fileContains": { "path": "next.config.ts", "pattern": "reactCompiler" } },
+          { "fileContains": { "path": "babel.config.js", "pattern": "babel-plugin-react-compiler" } },
+          { "fileContains": { "path": "babel.config.cjs", "pattern": "babel-plugin-react-compiler" } },
+          { "fileContains": { "path": ".babelrc", "pattern": "babel-plugin-react-compiler" } },
+          { "fileContains": { "path": ".babelrc.json", "pattern": "babel-plugin-react-compiler" } }
+        ]
+      }
     },
     {
       "label": "React Doctor",
-      "cmd": ["npx", "-y", "react-doctor@latest", ".", "--verbose"]
+      "cmd": ["npx", "-y", "react-doctor@latest", ".", "--verbose"],
+      "when": { "packageDep": "react" }
+    },
+    {
+      "label": "Expo Doctor",
+      "cmd": ["npx", "-y", "expo-doctor@latest"],
+      "when": { "packageDep": "expo" }
+    },
+    {
+      "label": "Expo Install Check",
+      "cmd": ["npx", "expo", "install", "--check"],
+      "when": { "packageDep": "expo" }
+    },
+    {
+      "label": "Expo Config Validate",
+      "cmd": ["npx", "expo", "config", "--type", "public"],
+      "when": {
+        "packageDep": "expo",
+        "anyOf": [
+          { "fileExists": "app.json" },
+          { "fileExists": "app.config.js" },
+          { "fileExists": "app.config.ts" }
+        ]
+      }
     }
   ]
 }

@@ -150,7 +150,12 @@ All keys optional.
   "pathIncludes": [],
   "sinceHours": 24,
   "reports": [
-    { "label": "Lint", "cmd": ["bun", "run", "lint"] }
+    { "label": "Lint", "cmd": ["bun", "run", "lint"] },
+    {
+      "label": "Expo Doctor",
+      "cmd": ["npx", "-y", "expo-doctor@latest"],
+      "when": { "packageDep": "expo" }
+    }
   ]
 }
 ```
@@ -158,7 +163,14 @@ All keys optional.
 - `pathExcludes`: git pathspecs added as `:(exclude)<path>` to every git query and surfaced to the auditor as the path-scope contract.
 - `pathIncludes`: positive pathspecs (additive). Empty = whole repo (minus excludes).
 - `sinceHours`: time window for `git log --since=` (default 24).
-- `reports`: array of `{ label, cmd }`. `cmd` is `[exe, ...args]` — runs from repo root, 5-min timeout, output capped at 16 KB (head+tail). Empty/missing = no reports.
+- `reports`: array of `{ label, cmd, when? }`. `cmd` is `[exe, ...args]` — runs from repo root, 5-min timeout, output capped at 16 KB (head+tail). Empty/missing = no reports.
+- `reports[].when` (optional): conditional gate. Top-level keys AND together. Supported keys:
+  - `packageDep` / `packageDeps`: declared in `package.json` deps/devDeps/peer/optional.
+  - `nodeModulesDep` / `nodeModulesDeps`: present under `node_modules/<name>/` — catches **transitive** deps (e.g. `babel-plugin-react-compiler` shipped via `expo` SDK rather than declared at top level).
+  - `fileExists` / `filesExist`: repo-relative paths must exist.
+  - `fileContains` / `filesContain`: `{ path, pattern }` (regex source) — for build-flag style detection (Expo `experiments.reactCompiler: true`, Next.js `experimental.reactCompiler`, babel.config plugin entries, etc.).
+  - `anyOf`: `whenClause[]` — passes if ANY nested clause passes (OR over the rest).
+  Skipped reports surface as `(skipped: <reason>)` and are ignored by the auditor.
 
 A reference example lives at `references/config-example.json`.
 
