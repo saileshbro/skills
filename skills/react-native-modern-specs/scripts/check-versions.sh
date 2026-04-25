@@ -18,11 +18,31 @@ fi
 # ---------- read versions ----------
 
 read_dep() {
-  # $1 = package name. checks dependencies + devDependencies + peerDependencies.
+  # $1 = package name. checks dependencies + devDependencies + peerDependencies
+  # in the root package.json AND in every workspace package.json (apps/*, packages/*).
+  # First match wins. Empty string when not found.
   node -e "
-    const p = require('./package.json');
-    const all = { ...p.dependencies, ...p.devDependencies, ...p.peerDependencies };
-    process.stdout.write(all['$1'] || '');
+    const fs = require('fs');
+    const path = require('path');
+    const roots = ['.'];
+    for (const ws of ['apps', 'packages']) {
+      try {
+        for (const entry of fs.readdirSync(ws)) {
+          const p = path.join(ws, entry);
+          if (fs.statSync(p).isDirectory()) roots.push(p);
+        }
+      } catch {}
+    }
+    let found = '';
+    for (const r of roots) {
+      if (found) break;
+      try {
+        const p = require(path.resolve(r, 'package.json'));
+        const all = { ...p.dependencies, ...p.devDependencies, ...p.peerDependencies };
+        if (all['$1']) found = all['$1'];
+      } catch {}
+    }
+    process.stdout.write(found);
   " 2>/dev/null
 }
 
@@ -48,15 +68,67 @@ if [[ -f pnpm-workspace.yaml ]] \
 fi
 
 # ---------- design system detection ----------
+# Search root + every monorepo workspace (apps/*, packages/*) so we don't
+# false-negative on Turbo/Bun/pnpm setups where theme dirs live under apps/<name>/.
+
+DS_ROOTS=(".")
+for ws in apps/* packages/*; do
+  [[ -d "$ws" ]] && DS_ROOTS+=("$ws")
+done
+
+# Tailwind v4 ditches tailwind.config.* in favour of a CSS file with
+# `@import "tailwindcss"` or `@tailwind base;` directives. Detect by content
+# in the conventional globals.css locations (also catches react-native-css /
+# NativeWind v5 setups which reuse the same CSS-first config).
+has_tailwind_css() {
+  # $1 = candidate css file
+  [[ -f "$1" ]] || return 1
+  grep -qE '^[[:space:]]*@import[[:space:]]+["'\''"]tailwindcss' "$1" 2>/dev/null && return 0
+  grep -qE '^[[:space:]]*@tailwind[[:space:]]+(base|components|utilities)' "$1" 2>/dev/null && return 0
+  return 1
+}
 
 DS_FOUND=()
-[[ -f tailwind.config.js || -f tailwind.config.ts ]] && DS_FOUND+=("tailwind/nativewind")
-[[ -f tamagui.config.ts  || -f tamagui.config.tsx ]] && DS_FOUND+=("tamagui")
-[[ -f unistyles.config.ts ]] && DS_FOUND+=("unistyles")
-[[ -n "$(read_dep '@shopify/restyle')" ]] && DS_FOUND+=("restyle")
-for d in src/theme src/design-system theme design-system; do
-  [[ -d "$d" ]] && DS_FOUND+=("local: $d/")
+for root in "${DS_ROOTS[@]}"; do
+  prefix=""
+  [[ "$root" != "." ]] && prefix="$root/"
+  # Config-file based design systems
+  [[ -f "$root/tailwind.config.js" || -f "$root/tailwind.config.ts" ]] && DS_FOUND+=("${prefix}tailwind/nativewind (config)")
+  [[ -f "$root/tamagui.config.ts"  || -f "$root/tamagui.config.tsx" ]] && DS_FOUND+=("${prefix}tamagui")
+  [[ -f "$root/unistyles.config.ts" ]] && DS_FOUND+=("${prefix}unistyles (config)")
+  # Tailwind v4 / react-native-css / NativeWind v5: globals.css with @import
+  for css in globals.css app/globals.css src/globals.css styles/globals.css src/styles/globals.css global.css src/global.css; do
+    if has_tailwind_css "$root/$css"; then
+      DS_FOUND+=("${prefix}tailwind v4 (css-first): ${css}")
+    fi
+  done
+  # Local theme dirs
+  for d in src/theme src/design-system theme design-system; do
+    [[ -d "$root/$d" ]] && DS_FOUND+=("local: ${prefix}${d}/")
+  done
 done
+
+# Package-based design systems (root + workspace package.jsons via read_dep).
+# Order: utility-first, then component libs, then style runtimes.
+ds_pkg() {
+  if [[ -n "$(read_dep "$1")" ]]; then DS_FOUND+=("$2"); fi
+}
+ds_pkg "nativewind"                "nativewind (pkg)"
+ds_pkg "react-native-css"          "react-native-css (Tailwind v4 RN runtime)"
+ds_pkg "uniwind"                   "uniwind"
+ds_pkg "react-native-unistyles"    "unistyles (pkg)"
+ds_pkg "@shopify/restyle"          "restyle"
+ds_pkg "tamagui"                   "tamagui (pkg)"
+ds_pkg "@gluestack-ui/themed"      "gluestack-ui"
+ds_pkg "@gluestack-ui/nativewind-utils" "gluestack-ui (nativewind)"
+ds_pkg "react-native-paper"        "react-native-paper"
+ds_pkg "@rneui/themed"             "react-native-elements"
+ds_pkg "native-base"               "native-base"
+ds_pkg "dripsy"                    "dripsy"
+ds_pkg "@stylexjs/stylex"          "stylex"
+ds_pkg "@vanilla-extract/css"      "vanilla-extract"
+ds_pkg "@tonnic/ui"                "tonnic"
+ds_pkg "react-native-reusables"    "shadcn/ui (react-native-reusables)"
 
 # ---------- print report ----------
 
@@ -83,9 +155,10 @@ echo "--- rule applicability ---"
 
 rule() {
   # $1 label, $2 ok (1/0), $3 detail
-  local mark="✓"; [[ $2 -eq 0 ]] && mark="✗ legacy"
+  local mark="✓"
+  if [[ $2 -eq 0 ]]; then mark="✗ legacy"; fi
   printf "  %-50s %s\n" "$1" "$mark"
-  [[ -n "${3:-}" ]] && printf "    %s\n" "$3"
+  if [[ -n "${3:-}" ]]; then printf "    %s\n" "$3"; fi
 }
 
 rn_major=$(major "$(ver "${RN:-0}")")

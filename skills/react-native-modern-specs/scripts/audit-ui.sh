@@ -41,8 +41,17 @@ done
 
 if [[ ${#PATHS[@]} -eq 0 ]]; then
   PATHS=()
-  for d in src app components screens features; do
-    [[ -d "$d" ]] && PATHS+=("$d")
+  # Source roots to scan: root + each monorepo workspace (apps/*, packages/*).
+  SCAN_ROOTS=(".")
+  for ws in apps/* packages/*; do
+    [[ -d "$ws" ]] && SCAN_ROOTS+=("$ws")
+  done
+  for root in "${SCAN_ROOTS[@]}"; do
+    prefix=""
+    [[ "$root" != "." ]] && prefix="$root/"
+    for d in src app components screens features; do
+      [[ -d "$root/$d" ]] && PATHS+=("${prefix}${d}")
+    done
   done
   [[ ${#PATHS[@]} -eq 0 ]] && PATHS=(.)
 fi
@@ -69,14 +78,80 @@ count() { wc -l | tr -d ' '; }
 
 section "design system"
 DS_LIST=()
-[[ -f tailwind.config.js || -f tailwind.config.ts ]] && DS_LIST+=("tailwind/nativewind  → migrate hex/spacing values to Tailwind classes (className=...)")
-[[ -f tamagui.config.ts  || -f tamagui.config.tsx ]] && DS_LIST+=("tamagui              → migrate to <Stack>/<Text> with theme tokens (\$bg, \$space.4, ...)")
-[[ -f unistyles.config.ts ]] && DS_LIST+=("unistyles            → migrate to createStyleSheet + theme.colors / theme.space")
-node -e "const p=require('./package.json');const d={...p.dependencies,...p.devDependencies};process.exit(d['@shopify/restyle']?0:1)" 2>/dev/null \
-  && DS_LIST+=("restyle              → migrate to themed components (<Box bg=\"surface\">)")
-for d in src/theme src/design-system theme design-system; do
-  [[ -d "$d" ]] && DS_LIST+=("local theme dir: $d/  → reuse existing tokens; do not introduce parallel constants")
+# Search root + each monorepo workspace; theme dirs in Turbo/Bun/pnpm setups
+# typically live under apps/<name>/src/theme, not the repo root.
+DS_ROOTS=(".")
+for ws in apps/* packages/*; do
+  [[ -d "$ws" ]] && DS_ROOTS+=("$ws")
 done
+
+# Tailwind v4 ditches tailwind.config.* in favour of a CSS file with
+# `@import "tailwindcss"` or `@tailwind base;` directives. NativeWind v5 +
+# react-native-css follow the same CSS-first config.
+has_tailwind_css() {
+  [[ -f "$1" ]] || return 1
+  grep -qE '^[[:space:]]*@import[[:space:]]+["'\''"]tailwindcss' "$1" 2>/dev/null && return 0
+  grep -qE '^[[:space:]]*@tailwind[[:space:]]+(base|components|utilities)' "$1" 2>/dev/null && return 0
+  return 1
+}
+
+for root in "${DS_ROOTS[@]}"; do
+  prefix=""
+  [[ "$root" != "." ]] && prefix="$root/"
+  [[ -f "$root/tailwind.config.js" || -f "$root/tailwind.config.ts" ]] && DS_LIST+=("${prefix}tailwind/nativewind (config)  → migrate hex/spacing values to Tailwind classes (className=...)")
+  [[ -f "$root/tamagui.config.ts"  || -f "$root/tamagui.config.tsx" ]] && DS_LIST+=("${prefix}tamagui              → migrate to <Stack>/<Text> with theme tokens (\$bg, \$space.4, ...)")
+  [[ -f "$root/unistyles.config.ts" ]] && DS_LIST+=("${prefix}unistyles (config)   → migrate to createStyleSheet + theme.colors / theme.space")
+  for css in globals.css app/globals.css src/globals.css styles/globals.css src/styles/globals.css global.css src/global.css; do
+    if has_tailwind_css "$root/$css"; then
+      DS_LIST+=("${prefix}tailwind v4 (${css})  → migrate hex/spacing to className=…; tokens live in @theme block of the css file")
+    fi
+  done
+  for d in src/theme src/design-system theme design-system; do
+    [[ -d "$root/$d" ]] && DS_LIST+=("local theme dir: ${prefix}${d}/  → reuse existing tokens; do not introduce parallel constants")
+  done
+done
+
+# Package-based design systems. Read root + workspace package.jsons.
+has_pkg() {
+  node -e "
+    const fs = require('fs'); const path = require('path');
+    const roots = ['.'];
+    for (const ws of ['apps','packages']) {
+      try { for (const e of fs.readdirSync(ws)) {
+        const p = path.join(ws,e);
+        if (fs.statSync(p).isDirectory()) roots.push(p);
+      } } catch {}
+    }
+    let hit = 0;
+    for (const r of roots) {
+      try {
+        const p = require(path.resolve(r, 'package.json'));
+        const all = { ...p.dependencies, ...p.devDependencies };
+        if (all['$1']) { hit = 1; break; }
+      } catch {}
+    }
+    process.exit(hit?0:1);
+  " 2>/dev/null
+}
+ds_pkg() {
+  if has_pkg "$1"; then DS_LIST+=("$2"); fi
+}
+ds_pkg "nativewind"                "nativewind (pkg)         → className=… with Tailwind tokens"
+ds_pkg "react-native-css"          "react-native-css         → Tailwind v4 RN runtime; use className with tokens from globals.css @theme"
+ds_pkg "uniwind"                   "uniwind                  → utility-first; use uniwind class strings, do not hand-roll StyleSheet"
+ds_pkg "react-native-unistyles"    "unistyles (pkg)          → createStyleSheet + theme.colors / theme.space"
+ds_pkg "@shopify/restyle"          "restyle                  → themed components (<Box bg=\"surface\">)"
+ds_pkg "tamagui"                   "tamagui (pkg)            → <Stack>/<Text> with \$tokens"
+ds_pkg "@gluestack-ui/themed"      "gluestack-ui             → use <Box>/<VStack> primitives with theme config"
+ds_pkg "@gluestack-ui/nativewind-utils" "gluestack-ui (nativewind) → className tokens via gluestack utils"
+ds_pkg "react-native-paper"        "react-native-paper       → use Paper components + theme provider"
+ds_pkg "@rneui/themed"             "react-native-elements    → ThemeProvider + makeStyles"
+ds_pkg "native-base"               "native-base              → use NB primitives (legacy; consider migration)"
+ds_pkg "dripsy"                    "dripsy                   → sx prop with theme scales"
+ds_pkg "@stylexjs/stylex"          "stylex                   → stylex.create + stylex.props"
+ds_pkg "@vanilla-extract/css"      "vanilla-extract          → .css.ts files with createTheme"
+ds_pkg "@tonnic/ui"                "tonnic                   → tonnic primitives + tokens"
+ds_pkg "react-native-reusables"    "shadcn/ui (rnr)          → composed primitives with className via nativewind"
 
 if [[ ${#DS_LIST[@]} -gt 0 ]]; then
   echo "detected:"
