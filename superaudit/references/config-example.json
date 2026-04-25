@@ -1,0 +1,16 @@
+{
+  "pathExcludes": ["apps/native-old", "apps/web", "apps/landing"],
+  "pathIncludes": [],
+  "sinceHours": 24,
+  "reports": [
+    { "label": "Lint", "cmd": ["bun", "run", "lint"] },
+    {
+      "label": "React Compiler Healthcheck",
+      "cmd": ["npx", "-y", "react-compiler-healthcheck@latest"]
+    },
+    {
+      "label": "React Doctor",
+      "cmd": ["npx", "-y", "react-doctor@latest", ".", "--verbose"]
+    }
+  ]
+}

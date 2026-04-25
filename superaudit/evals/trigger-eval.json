@@ -1,0 +1,82 @@
+[
+  {
+    "query": "/superaudit",
+    "should_trigger": true
+  },
+  {
+    "query": "/superaudit override",
+    "should_trigger": true
+  },
+  {
+    "query": "ok before I cut the release branch tonight can you superaudit this branch and give me a P0/P1/P2 list of stuff I should fix or at least know about? we've been merging a ton of PRs into main this week",
+    "should_trigger": true
+  },
+  {
+    "query": "review my recent changes against our conventions — last 24h or so on the marketing-site repo. mostly touched apps/web/src/components/checkout/* and a couple of edge fns. specifically want to know if anyone bypassed the design tokens or stuck files in the wrong folder",
+    "should_trigger": true
+  },
+  {
+    "query": "run the audit thing again — the prior cycle is sitting at superaudit/cycle-006.md and i've checked off a few items. carry the rest forward and add anything new",
+    "should_trigger": true
+  },
+  {
+    "query": "what's risky on this branch rn? feature/payments-v2 has like 18 commits since monday and i'm about to ask for review. fold in lint + typecheck output if you can",
+    "should_trigger": true
+  },
+  {
+    "query": "did the new code from this week follow our coding practices? we've got import-layering rules in CLAUDE.md and a strict folder convention for features/ vs lib/ — write me a checkable list of violations",
+    "should_trigger": true
+  },
+  {
+    "query": "look at the recent changes in services/billing/ and tell me anything that drifts from our standards — naming, structure, the usual stuff. checkable list please, i'll tick them off as i fix them",
+    "should_trigger": true
+  },
+  {
+    "query": "audit the diff. project-wide, write a new cycle file under superaudit/, no per-author split. include lint and typecheck reports in the evidence",
+    "should_trigger": true
+  },
+  {
+    "query": "do the superaudit thing — drop a new cycle file with P0/P1/P2 checkboxes for everything that's drifted from our folder structure / design system / lint config since last cycle",
+    "should_trigger": true
+  },
+  {
+    "query": "tail -f /var/log/audit/auth.log on the staging box and tell me when you see a failed sudo from the deploy user. need to debug a perm issue",
+    "should_trigger": false
+  },
+  {
+    "query": "review this PR: https://github.com/acme/checkout/pull/482 — bunch of frontend changes, want comments inline on the diff like a normal code review",
+    "should_trigger": false
+  },
+  {
+    "query": "we have a SOC2 audit next week and i need to dump every prod database access from the last 90d. where do our audit logs live and how do i query them in BigQuery?",
+    "should_trigger": false
+  },
+  {
+    "query": "git log --since=24h.ago --stat — can you just show me what's changed on this branch in the last day? no analysis, just the raw stat output",
+    "should_trigger": false
+  },
+  {
+    "query": "set up a pre-commit hook that runs eslint on staged files and blocks the commit if anything fails. also want husky + lint-staged wired up",
+    "should_trigger": false
+  },
+  {
+    "query": "i want to add an audit_log table to our postgres schema for tracking admin actions. columns: actor_id, action, target_type, target_id, metadata jsonb, created_at. write the migration",
+    "should_trigger": false
+  },
+  {
+    "query": "the description in our SKILL.md isn't triggering well — can you optimize it? run the description optimizer with 5 iterations against the eval set in evals/trigger-eval.json",
+    "should_trigger": false
+  },
+  {
+    "query": "we got pwned last quarter — can you walk through the cloudtrail audit log for april 12-14 and find anything that looks like an unauthorized IAM role assumption? bucket is s3://acme-security-audit/",
+    "should_trigger": false
+  },
+  {
+    "query": "deep-dive review of just src/auth/middleware.ts — i'm worried we weakened the JWT audience check on line 47ish. don't care about the rest of the branch, just this file. talk through it with me",
+    "should_trigger": false
+  },
+  {
+    "query": "open superaudit/cycle-005.md and summarize which P0s are still unchecked. don't generate a new cycle, just read what's there",
+    "should_trigger": false
+  }
+]
