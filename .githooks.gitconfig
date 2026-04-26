@@ -3,5 +3,5 @@
 # (which runs: git config --local include.path ../.githooks.gitconfig)
 
 [hook "skills-sync"]
-	event = post-commit
+	event = reference-transaction
 	command = scripts/skills-sync.sh
