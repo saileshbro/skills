@@ -1,0 +1,7 @@
+# Git 2.54+ config-based hooks for this repo.
+# Activate per-clone with: bash scripts/install-hooks.sh
+# (which runs: git config --local include.path ../.githooks.gitconfig)
+
+[hook "skills-sync"]
+	event = post-commit
+	command = scripts/skills-sync.sh
