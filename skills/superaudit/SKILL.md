@@ -174,6 +174,18 @@ All keys optional.
 
 A reference example lives at `references/config-example.json`.
 
+## Why both diff-driven and state-driven reports
+
+The default reports (lint/tsc/grep) are **change-driven**: they fire on what `git log --since=…` surfaced. That misses repo-wide drift that doesn't show up in any single diff:
+
+- Empty directories left behind by a rename/refactor.
+- Stub-only feature dirs that look real (`features/<x>/screens/foo-screen.tsx` ≈ 200 B placeholder).
+- Orphan files with zero inbound imports (no compiler error, no lint warning).
+- Cross-feature imports (`@/features/A` inside `features/B/`) that lint can't catch without an explicit boundary plugin.
+- Bible↔reality drift (CLAUDE.md/AGENTS.md promises a `assets/` dir that doesn't exist).
+
+The reference config now ships `Structure:*` reports for these. They run every cycle on current HEAD regardless of the diff window — that's intentional. Mirror them in your repo's `superaudit/.config.json` if you want this coverage; trim/add specific globs to match your top-level layout.
+
 ## Files in this skill
 
 - `scripts/prepare.mjs` — gathers context, loads state, scrapes prior check-offs, acquires lock, runs reports, prints JSON.

@@ -5,6 +5,54 @@
   "reports": [
     { "label": "Lint", "cmd": ["bun", "run", "lint"] },
     {
+      "label": "Structure:emptyDirs",
+      "cmd": [
+        "bash",
+        "-c",
+        "find apps packages -type d -empty 2>/dev/null | grep -vE '(node_modules|\\.turbo|\\.expo|dist|build|coverage)' || echo '(none)'"
+      ]
+    },
+    {
+      "label": "Structure:topLevel",
+      "cmd": [
+        "bash",
+        "-c",
+        "for d in apps/*/src packages/*/src; do [ -d \"$d\" ] && echo \"$d:\" && ls \"$d\"; done"
+      ]
+    },
+    {
+      "label": "Structure:stubFeatures",
+      "cmd": [
+        "bash",
+        "-c",
+        "for f in apps/*/src/features/*/; do [ -d \"$f\" ] || continue; b=$(find \"$f\" -name '*.ts*' -type f 2>/dev/null | xargs wc -c 2>/dev/null | tail -1 | awk '{print $1+0}'); [ \"${b:-0}\" -lt 2048 ] && echo \"$f $b bytes\"; done; true"
+      ]
+    },
+    {
+      "label": "Structure:crossFeatureImports",
+      "cmd": [
+        "bash",
+        "-c",
+        "for f in apps/*/src/features/*/; do [ -d \"$f\" ] || continue; n=$(basename \"$f\"); rg -l --no-messages \"@/features/(?!${n}/)\" \"$f\" || true; done; true"
+      ]
+    },
+    {
+      "label": "Structure:downwardDeps",
+      "cmd": [
+        "bash",
+        "-c",
+        "rg -n --no-messages '@/features/' apps/*/src/components apps/*/src/lib apps/*/src/hooks 2>/dev/null || echo '(none)'"
+      ]
+    },
+    {
+      "label": "Structure:orphanComponents",
+      "cmd": [
+        "bash",
+        "-c",
+        "for f in $(find apps/*/src/components -maxdepth 2 -name '*.tsx' 2>/dev/null); do n=$(basename \"$f\" .tsx); hits=$(rg -l --no-messages \"from .*${n}['\\\"]|/${n}['\\\"]\" apps packages 2>/dev/null | grep -v \"$f\" | wc -l | tr -d ' '); [ \"$hits\" = \"0\" ] && echo \"orphan: $f\"; done; true"
+      ]
+    },
+    {
       "label": "React Compiler Marker",
       "cmd": ["npx", "-y", "react-compiler-marker@latest", "--format", "json", "."],
       "when": {

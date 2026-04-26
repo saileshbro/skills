@@ -17,7 +17,7 @@ Authoritative rules for producing a cycle file. The skill (`SKILL.md`) wires the
 3. Cross-check architecture, layering, naming, folder conventions. **Always consult repo `CLAUDE.md` / `AGENTS.md` if present** — they encode the rules this audit measures against. Also look for: `tokens.*` / design-system imports (drift = hardcoded values), `eslint`/`biome` config (suppressions or rule-disables in the diff), `tsconfig.json` paths (alias misuse).
 4. Detect:
    - **Convention drift (primary focus)**: design-token bypass (hardcoded colors/spacing/typography), folder-structure violations (file in wrong layer/feature dir), naming-convention drift (file casing, component naming, prop naming), import alias misuse, lint/format suppressions added in diff.
-   - **Architecture / layering**: cross-layer imports, package boundary leaks, top-level dir misuse.
+   - **Architecture / layering**: cross-layer imports, package boundary leaks, top-level dir misuse, downward deps (e.g. `components/` importing from `features/`).
    - **Dead code / duplicates**: renamed-but-old-kept, orphan exports, unused files.
    - **Security**: committed secrets or `.env*.local`, weakened auth defaults, CORS/cookie/CSRF regressions, PII in logs, disabled checks.
    - **Performance**: N+1 queries, unmemoized heavy renders, bundle adds, sync I/O on hot paths, re-entrancy, unstable list keys.
@@ -25,6 +25,14 @@ Authoritative rules for producing a cycle file. The skill (`SKILL.md`) wires the
    - **Scope creep**: commits mixing unrelated concerns.
    - **Test gaps**: new logic without tests, snapshot-only coverage for behavior.
    - **API/contract drift**: public exports changed without version bump, breaking prop changes.
+5. **State-driven sweep (every cycle, not just diff)**. The window-and-grep loop misses repo-wide drift: empty dirs, stub-only features, orphan files, dead exports, doc↔reality drift. Always also walk current HEAD for:
+   - **Empty directories** (`find -type d -empty`) — abandoned scaffolds violate the "closed list" contract.
+   - **Closed-list drift** — `ls <src>` vs the bible's enumerated top-level dirs. Missing dirs the bible promises (e.g. `assets/`) and extra dirs not on the list both qualify.
+   - **Stub-only features** — feature dirs whose total source byte-count is below ~2 KB are placeholder shells masquerading as real features.
+   - **Orphan files** — files with zero inbound imports (`rg "from .*<basename>"` returns 0). Special attention to `*-screen.tsx` / `*-component.tsx` in shared dirs.
+   - **Cross-feature import graph** — for each `features/<X>`, grep `@/features/(?!X)` inside it; flag any hits unless annotated.
+   - **Dead exports** — exported symbols in feature `types.ts` / `constants.ts` / `index.ts` whose grep returns 0 inbound consumers.
+   - **Bible drift** — for every "MUST DO" / "DO" rule that names a path or file pattern, grep current HEAD to verify reality matches.
 
 ## Dedup against prior cycles
 
@@ -106,6 +114,25 @@ Ordered list pulling from the priority queue across all features. Reference find
 
 - Things needing human decision before fix. Not findings, no fingerprint, no checkbox.
 ```
+
+## Applying findings (the plan→approve→apply seam)
+
+The skill writes findings; it does **not** apply them. Cycle files are the proposal layer. Skipping straight from "finding" to "edit the file" loses the bible-vs-finding sanity check and is the failure mode that produces "the audit damaged the repo." Treat application as its own pipeline:
+
+1. **Group findings into a plan.** From the cycle file, bucket each fp by:
+   - **Mechanical** — single-file rename, lint annotation, dead-import strip. Risk: low.
+   - **Structural** — directory move, file lift, dep boundary change. Risk: medium.
+   - **Cross-cutting** — pattern sweeps across many files (logger adoption, store splits, route gating). Risk: high.
+
+2. **Re-read the bible per finding.** Before each edit, walk `CLAUDE.md` / `AGENTS.md` rules that name the same path or pattern. If the proposed fix would create a new violation (downward dep, store split, cross-feature import), **skip** the finding and surface the conflict in the plan: "fp X rejected — `Fix:` text would violate §N.M (<reason>). Suggest alternative: <…>." Do not apply silently.
+
+3. **Pause for approval before structural and cross-cutting changes.** Mechanical changes can run unattended. Structural and cross-cutting changes need explicit user "go" — show the grouped plan first, list the rejected-with-reason items, and wait. The user check-off on a finding line is not the same as approval to apply; it's a "decided not to act" signal.
+
+4. **Apply, verify, check off.** After each edit, run the same lint/tsc gates the skill ran during prepare. On clean, flip `[ ]` → `[x]` on the finding line in the cycle file (this is the only legitimate edit to a prior cycle, per `## Rules` below). On regression, revert and surface in the plan.
+
+5. **Carry rejected findings forward.** Items rejected for bible conflict are not "stale" — they are open and unfixable in the proposed shape. Document the rejection in the next cycle's `## Open Questions`, not as a closure.
+
+This pipeline is what the skill *recommends* operators (human or agent) follow. The skill does not enforce it; it only ships the proposal artifact.
 
 ## Rules
 
